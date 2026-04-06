@@ -282,7 +282,7 @@ Writes final structured result back into Google Sheets.
 
 ---
 
-## Claude Node Prompt
+## OpenAI Node Prompt
 
 ### System Prompt
 
@@ -358,10 +358,10 @@ Return ONLY the JSON object. Nothing else.
 | Phone Number ID | `5a232df4-1694-447b-aba9-631ff4262fa3` |
 | LLM Provider | Anthropic (Claude) |
 | Voice Provider | ElevenLabs |
-| Transcriber | Deepgram |
 | Start Speaking Wait | 1.3 seconds |
 | Smart Endpointing | Vapi |
 | Voicemail Detection | Enabled |
+| Transcriber | Deepgram |
 
 > ⚠️ **Security Note:** Do not commit your Vapi API key to the repository. Store it in n8n credentials or as an environment variable.
 

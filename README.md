@@ -9,6 +9,8 @@
 - [Overview](#overview)
 - [How It Works](#how-it-works)
 - [Tech Stack](#tech-stack)
+- [Backend Architecture (FastAPI)](#backend-architecture-fastapi)
+- [Frontend Dashboard (React)](#frontend-dashboard-react)
 - [Agent Identity](#agent-identity)
 - [Call Flow](#call-flow)
 - [Questionnaire Structure](#questionnaire-structure)
@@ -43,22 +45,22 @@ The system handles the full call lifecycle:
 
 ```
 Google Sheets (Patient Data)
-        ↓
-    n8n Workflow
-        ↓
-  Loop per Patient Row
-        ↓
-  HTTP Request → Vapi Outbound Call API
-        ↓
-  Vapi Executes Jessica AI Agent
-        ↓
-  Webhook captures call result + transcript
-        ↓
-  Claude AI Node → Structures transcript into JSON
-        ↓
-  Set Node → Cleans & maps final output
-        ↓
-  Google Sheets → Appends result row per patient
+            ↓
+      n8n Workflow
+            ↓
+   Loop per Patient Row
+            ↓
+   HTTP Request → Vapi Outbound Call API
+            ↓
+   Vapi Executes Jessica AI Agent
+            ↓
+   Webhook captures call result + transcript
+            ↓
+   Claude AI Node → Structures transcript into JSON
+            ↓
+   Set Node → Cleans & maps final output
+            ↓
+   Google Sheets → Appends result row per patient
 ```
 
 ---
@@ -75,6 +77,48 @@ Google Sheets (Patient Data)
 | Structured Output | Claude (via native n8n connector) |
 | Data Source | Google Sheets |
 | Data Storage | Google Sheets |
+
+---
+
+## Backend Architecture (FastAPI)
+
+The backend (`carecaller-backend/main.py`) is built with FastAPI and acts as the analytics + webhook processing layer for the workflow.
+
+### What the backend does
+
+- Receives webhooks for call start/completion events.
+- Accepts bulk contacts from n8n in multiple formats (flat list and nested wrapper payloads).
+- Stores contacts and call records in memory for rapid hackathon iteration.
+- Triggers background AI analysis for completed calls using the OpenAI Chat Completions API.
+- Serves analytics and call detail endpoints consumed by the dashboard.
+
+### Main backend endpoints
+
+- `GET /health`
+- `POST /webhook/call-started`
+- `POST /webhook/call-completed`
+- `POST /webhook/contacts`
+- `GET /calls`
+- `GET /calls/{call_id}`
+- `GET /contacts`
+- `GET /stats`
+- `POST /demo/seed`
+
+---
+
+## Frontend Dashboard (React)
+
+The frontend (`carecaller-frontend/`) is a Vite + React app designed for monitoring and reviewing call outcomes.
+
+### Main pages
+
+- **Dashboard**: headline metrics + patient queue
+- **Recent Calls**: stream/list of recent call outcomes
+- **Call Detail**: detailed breakdown with transcript and AI analysis
+
+### Current data mode
+
+For hackathon demo reliability, the UI currently uses local mock data in page components. API fetch paths are present in code and can be re-enabled to pull live backend data.
 
 ---
 
@@ -97,24 +141,24 @@ Jessica is designed to behave like a real outbound healthcare refill coordinator
 
 ```
 OPENING
-  └─ Greeting + Identity Confirmation
-  └─ Refill Interest Check
-  └─ Availability Check (2 minutes?)
+   └─ Greeting + Identity Confirmation
+   └─ Refill Interest Check
+   └─ Availability Check (2 minutes?)
 
 ROUTING
-  ├─ Busy         → outcome: scheduled   → capture callback time + timezone → CLOSING
-  ├─ Not Interested → outcome: opted_out → confirm → CLOSING
-  ├─ Wrong Person  → outcome: wrong_number → apologize → CLOSING
-  └─ Agrees        → begin QUESTIONNAIRE
+   ├─ Busy         → outcome: scheduled   → capture callback time + timezone → CLOSING
+   ├─ Not Interested → outcome: opted_out → confirm → CLOSING
+   ├─ Wrong Person  → outcome: wrong_number → apologize → CLOSING
+   └─ Agrees        → begin QUESTIONNAIRE
 
 QUESTIONNAIRE (14 questions — strict order)
 
 CLOSING
-  └─ Deliver outcome-specific closing script
+   └─ Deliver outcome-specific closing script
 
 TERMINATED
-  └─ Trigger end_call function
-  └─ Generate internal JSON summary (never spoken)
+   └─ Trigger end_call function
+   └─ Generate internal JSON summary (never spoken)
 ```
 
 ---
@@ -166,14 +210,14 @@ After every call, one clean structured JSON object is generated per patient:
 
 ```json
 {
-  "patient_name": "vighnesh",
-  "number": "919398952819",
-  "status": "completed",
-  "summary": "Patient completed full check-in. Reported 4 lbs weight loss, mild nausea side effect noted.",
-  "transcript": "<full raw call transcript>",
-  "call_duration": "187",
-  "action_required": "Follow-up needed — side effect flagged for clinical review",
-  "timestamp": "2026-04-06T17:30:00Z"
+   "patient_name": "vighnesh",
+   "number": "919398952819",
+   "status": "completed",
+   "summary": "Patient completed full check-in. Reported 4 lbs weight loss, mild nausea side effect noted.",
+   "transcript": "<full raw call transcript>",
+   "call_duration": "187",
+   "action_required": "Follow-up needed — side effect flagged for clinical review",
+   "timestamp": "2026-04-06T17:30:00Z"
 }
 ```
 
@@ -191,56 +235,50 @@ After every call, one clean structured JSON object is generated per patient:
 
 ## n8n Workflow Architecture
 
-The n8n workflow consists of **9 nodes** executed in sequence:
+The n8n workflow consists of the following active nodes in sequence:
 
-### Node 1 — Manual Trigger
-Starts the workflow on demand. Can be swapped for a Cron trigger for scheduled daily runs.
+### Node 1 — When clicking 'Execute workflow'
+Starts the workflow manually.
 
-### Node 2 — Google Sheets (Read)
-Reads all patient rows from the configured Google Sheet. Each row contains: `patient_name`, `number`, `medication`, `dosage`.
+### Node 2 — Edit Fields
+Prepares/manual-maps fields before fetching and processing leads.
 
-### Node 3 — Loop Over Items
-Iterates one patient row at a time, ensuring calls are made sequentially and not in parallel.
+### Node 3 — Lead List (Google Sheets Read)
+Reads lead/patient rows from Google Sheets.
 
-### Node 4 — HTTP Request (Vapi Outbound Call)
-Calls Vapi's outbound call API with the patient's number and assistant configuration. Passes `patient_name`, `medication`, and `dosage` as dynamic variables.
+### Node 4 — get assistant
+Fetches assistant configuration used for the outbound call request.
+
+### Node 5 — Loop Over Items
+Processes each lead row one-by-one.
+
+### Node 6 — Make call
+Sends outbound call request to Vapi.
 
 ```
-POST https://api.vapi.ai/call/phone
-Authorization: Bearer <VAPI_API_KEY>
+POST https://api.vapi.ai/call
 ```
 
-```json
-{
-  "assistantId": "4e61e788-d0bd-4e95-b351-7b864ccf3556",
-  "phoneNumberId": "5a232df4-1694-447b-aba9-631ff4262fa3",
-  "customer": {
-    "number": "+{{ $json.number }}"
-  },
-  "assistantOverrides": {
-    "variableValues": {
-      "patient_name": "{{ $json.patient_name }}",
-      "medication": "{{ $json.medication }}",
-      "dosage": "{{ $json.dosage }}"
-    }
-  }
-}
-```
+### Node 7 — get cal summary
+Retrieves call summary/status after placing the call.
 
-### Node 5 — Wait Node
-Pauses workflow execution and waits for Vapi's webhook to fire with the post-call payload (transcript, duration, end reason).
+### Node 8 — If
+Checks whether summary/output is ready.
 
-### Node 6 — Webhook Node
-Receives Vapi's `end-of-call-report` server message. Captures: transcript, call duration, end reason, and call metadata.
+- **false branch** → **Wait** → loops back to **get cal summary**
+- **true branch** → proceeds to final formatting/output nodes
 
-### Node 7 — Claude AI Node (native n8n connector)
-Sends the raw transcript and call metadata to Claude. Receives structured JSON back. See **Claude Node Prompt** section below.
+### Node 9 — Wait
+Delay node used for polling loop until summary is available.
 
-### Node 8 — Set Node
-Maps Claude's output to the final clean JSON schema. Ensures no extra fields slip through and all values are correctly typed.
+### Node 10 — Message a model
+Generates structured response content from call result.
 
-### Node 9 — Google Sheets (Append)
-Appends the final JSON as a new row in the results sheet — one row per patient call.
+### Node 11 — Code in JavaScript
+Maps/transforms model response to your sheet schema.
+
+### Node 12 — Append or update row in sheet
+Writes final structured result back into Google Sheets.
 
 ---
 
@@ -256,7 +294,7 @@ Your ONLY job is to read a raw call transcript and call metadata, then return a 
 STRICT RULES:
 - Output ONLY raw valid JSON. No markdown. No code fences. No commentary. No explanation.
 - The JSON must contain exactly these fields and no others:
-  patient_name, number, status, summary, transcript, call_duration, action_required, timestamp
+   patient_name, number, status, summary, transcript, call_duration, action_required, timestamp
 
 STATUS ENUM — you must select exactly ONE:
 - completed    → full questionnaire was conducted and call ended normally
@@ -273,11 +311,11 @@ FIELD RULES:
 - transcript: Copy the full raw transcript string exactly as provided. Do not modify or summarize it.
 - call_duration: Use the value provided in seconds. If not available, use "unknown".
 - action_required: Choose a meaningful next step. Examples:
-    "No action required"
-    "Follow-up needed — side effect reported"
-    "Escalate to clinical team — serious symptom mentioned"
-    "Schedule callback — patient unavailable"
-    "Verify number — wrong person answered"
+      "No action required"
+      "Follow-up needed — side effect reported"
+      "Escalate to clinical team — serious symptom mentioned"
+      "Schedule callback — patient unavailable"
+      "Verify number — wrong person answered"
 - timestamp: Use the provided end timestamp in ISO 8601 format. If not available, use current UTC time.
 
 EDGE CASE HANDLING:

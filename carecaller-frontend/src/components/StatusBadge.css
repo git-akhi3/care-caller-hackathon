@@ -1,0 +1,72 @@
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 200ms ease;
+}
+
+.status-pending {
+  color: var(--text-muted);
+}
+
+.status-dot.status-pending {
+  color: var(--text-muted);
+}
+
+.status-in-progress {
+  color: var(--accent-cyan);
+  animation: pulse-badge 2s ease-in-out infinite;
+}
+
+.status-dot.status-in-progress {
+  color: var(--accent-cyan);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.status-completed {
+  color: var(--accent-green);
+}
+
+.status-dot.status-completed {
+  color: var(--accent-green);
+}
+
+.status-escalated {
+  color: var(--accent-red);
+}
+
+.status-dot.status-escalated {
+  color: var(--accent-red);
+}
+
+.status-opted-out {
+  color: var(--text-muted);
+}
+
+.status-dot.status-opted-out {
+  color: var(--text-muted);
+}
+
+@keyframes pulse-badge {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
